@@ -145,6 +145,11 @@ package starling.textures
         {
             return mTextureRegions[name];
         }
+		
+		public function get textureRegions():Dictionary
+		{
+			return mTextureRegions;
+		}
         
         /** Returns the frame rectangle of a specific region, or <code>null</code> if that region 
          *  has no frame. */
