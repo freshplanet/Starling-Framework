@@ -65,14 +65,14 @@ package starling.text
         private static const CHAR_NEWLINE:int         = 10;
         private static const CHAR_CARRIAGE_RETURN:int = 13;
         
-        private var mTexture:Texture;
-        private var mChars:Dictionary;
-        private var mName:String;
-        private var mSize:Number;
-        private var mLineHeight:Number;
-        private var mBaseline:Number;
-        private var mHelperImage:Image;
-        private var mCharLocationPool:Vector.<CharLocation>;
+        protected var mTexture:Texture;
+        protected var mChars:Dictionary;
+        protected var mName:String;
+        protected var mSize:Number;
+        protected var mLineHeight:Number;
+        protected var mBaseline:Number;
+        protected var mHelperImage:Image;
+        protected var mCharLocationPool:Vector.<CharLocation>;
         
         /** Creates a bitmap font by parsing an XML file and uses the specified texture. 
          *  If you don't pass any data, the "mini" font will be created. */
@@ -102,7 +102,7 @@ package starling.text
                 mTexture.dispose();
         }
         
-        private function parseFontXml(fontXml:XML):void
+        protected function parseFontXml(fontXml:XML):void
         {
             var scale:Number = mTexture.scale;
             var frame:Rectangle = mTexture.frame;
