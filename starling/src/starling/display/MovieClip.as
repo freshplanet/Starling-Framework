@@ -12,6 +12,7 @@ package starling.display
 {
     import flash.errors.IllegalOperationError;
     import flash.media.Sound;
+	import starling.core.Starling;
     
     import starling.animation.IAnimatable;
     import starling.events.Event;
@@ -268,7 +269,10 @@ package starling.display
             }
             
             if (mCurrentFrame != previousFrame)
+			{
                 texture = mTextures[mCurrentFrame];
+				Starling.renderEnabled = true;
+			}
             
             if (dispatchCompleteEvent)
                 dispatchEventWith(Event.COMPLETE);

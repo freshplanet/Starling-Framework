@@ -11,6 +11,7 @@
 
 package starling.animation
 {
+    import starling.core.Starling;
     import starling.core.starling_internal;
     import starling.events.Event;
     import starling.events.EventDispatcher;
@@ -115,7 +116,7 @@ package starling.animation
         public function animate(property:String, endValue:Number):void
         {
             if (mTarget == null) return; // tweening null just does nothing.
-                   
+			
             mProperties.push(property);
             mStartValues.push(Number.NaN);
             mEndValues.push(endValue);
@@ -157,7 +158,8 @@ package starling.animation
                 return; // the delay is not over yet
             else if (mCurrentTime > mTotalTime) 
                 mCurrentTime = mTotalTime;
-            
+			
+			Starling.renderEnabled = true;
             if (mCurrentCycle < 0 && previousTime <= 0 && mCurrentTime > 0)
             {
                 mCurrentCycle++;

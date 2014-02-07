@@ -380,6 +380,12 @@ package starling.core
             mJuggler.advanceTime(passedTime);
         }
         
+        private static var _renderEnabled:Boolean = true;
+		public static function get renderEnabled():Boolean {return _renderEnabled;}
+        public static function set renderEnabled(value:Boolean):void
+        {
+            _renderEnabled = value;
+        }
         /** Renders the complete display list. Before rendering, the context is cleared; afterwards,
          *  it is presented. This can be avoided by enabling <code>shareContext</code>.*/ 
         public function render():void
@@ -389,6 +395,9 @@ package starling.core
             
             makeCurrent();
             updateViewPort();
+            if(!_renderEnabled)
+                return;
+            _renderEnabled = false;
             updateNativeOverlay();
             mSupport.nextFrame();
             
@@ -427,6 +436,7 @@ package starling.core
                 mPreviousViewPort.height != mViewPort.height ||
                 mPreviousViewPort.x != mViewPort.x || mPreviousViewPort.y != mViewPort.y)
             {
+                _renderEnabled = true;
                 mPreviousViewPort.setTo(mViewPort.x, mViewPort.y, mViewPort.width, mViewPort.height);
                 
                 // Constrained mode requires that the viewport is within the native stage bounds;
