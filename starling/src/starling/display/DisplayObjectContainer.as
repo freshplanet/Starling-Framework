@@ -142,6 +142,50 @@ package starling.display
                 throw new RangeError("Invalid child index");
             }
         }
+		
+		/** Adds a child to the container. It will be at the frontmost position. */
+		public function addChildNoEvent(child:DisplayObject):DisplayObject
+		{
+			addChildAtNoEvent(child, numChildren);
+			return child;
+		}
+		
+		/** Adds a child to the container at a certain index. */
+		public function addChildAtNoEvent(child:DisplayObject, index:int):DisplayObject
+		{
+			var numChildren:int = mChildren.length; 
+			
+			if (index >= 0 && index <= numChildren)
+			{
+				if (child.parent == this)
+				{
+					setChildIndex(child, index); // avoids dispatching events
+				}
+				else
+				{
+					child.removeFromParent();
+					
+					// 'splice' creates a temporary object, so we avoid it if it's not necessary
+					if (index == numChildren) mChildren[numChildren] = child;
+					else                      mChildren.splice(index, 0, child);
+					
+					child.setParent(this);
+					
+					if (stage)
+					{
+						var container:DisplayObjectContainer = child as DisplayObjectContainer;
+						if (container) container.broadcastEventWith(Event.ADDED_TO_STAGE);
+						else           child.dispatchEventWith(Event.ADDED_TO_STAGE);
+					}
+				}
+				
+				return child;
+			}
+			else
+			{
+				throw new RangeError("Invalid child index");
+			}
+		}
         
         /** Removes a child from the container. If the object is not a child, nothing happens. 
          *  If requested, the child will be disposed right away. */
