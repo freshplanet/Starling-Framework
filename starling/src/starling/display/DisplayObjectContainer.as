@@ -78,11 +78,11 @@ package starling.display
         /** @private */
         public function DisplayObjectContainer()
         {
-            if (Capabilities.isDebugger && 
-                getQualifiedClassName(this) == "starling.display::DisplayObjectContainer")
-            {
-                throw new AbstractClassError();
-            }
+//            if (Capabilities.isDebugger && 
+//                getQualifiedClassName(this) == "starling.display::DisplayObjectContainer")
+//            {
+//                throw new AbstractClassError();
+//            }
             
             mChildren = new <DisplayObject>[];
         }
