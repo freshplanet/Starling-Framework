@@ -10,13 +10,12 @@
 
 package starling.display
 {
-    import com.adobe.utils.AGALMiniAssembler;
-    
     import flash.display3D.Context3D;
     import flash.display3D.Context3DProgramType;
     import flash.display3D.Context3DTextureFormat;
     import flash.display3D.Context3DVertexBufferFormat;
     import flash.display3D.IndexBuffer3D;
+    import flash.display3D.Program3D;
     import flash.display3D.VertexBuffer3D;
     import flash.geom.Matrix;
     import flash.geom.Matrix3D;
@@ -67,7 +66,7 @@ package starling.display
     public class QuadBatch extends DisplayObject
     {
         /** The maximum number of quads that can be displayed by one QuadBatch. */
-        public static const MAX_NUM_QUADS:int = 8192;
+        public static const MAX_NUM_QUADS:int = 16383;
         
         private static const QUAD_PROGRAM_NAME:String = "QB_q";
         
@@ -79,10 +78,14 @@ package starling.display
         private var mTexture:Texture;
         private var mSmoothing:String;
         
-        private var mVertexData:VertexData;
         private var mVertexBuffer:VertexBuffer3D;
         private var mIndexData:Vector.<uint>;
         private var mIndexBuffer:IndexBuffer3D;
+        
+        /** The raw vertex data of the quad. After modifying its contents, call
+         *  'onVertexDataChanged' to upload the changes to the vertex buffers. Don't change the
+         *  size of this object manually; instead, use the 'capacity' property of the QuadBatch. */
+        protected var mVertexData:VertexData;
 
         /** Helper objects. */
         private static var sHelperMatrix:Matrix = new Matrix();
@@ -112,8 +115,12 @@ package starling.display
         {
             Starling.current.stage3D.removeEventListener(Event.CONTEXT3D_CREATE, onContextCreated);
             
-            if (mVertexBuffer) mVertexBuffer.dispose();
-            if (mIndexBuffer)  mIndexBuffer.dispose();
+            mVertexData.numVertices = 0;
+            mIndexData.length = 0;
+            mNumQuads = 0;
+            
+            if (mVertexBuffer) { mVertexBuffer.dispose(); mVertexBuffer = null; }
+            if (mIndexBuffer)  { mIndexBuffer.dispose();  mIndexBuffer = null; }
             
             super.dispose();
         }
@@ -121,7 +128,12 @@ package starling.display
         private function onContextCreated(event:Object):void
         {
             createBuffers();
-            registerPrograms();
+        }
+        
+        /** Call this method after manually changing the contents of 'mVertexData'. */
+        protected function onVertexDataChanged():void
+        {
+            mSyncRequired = true;
         }
         
         /** Creates a duplicate of the QuadBatch object. */
@@ -140,28 +152,10 @@ package starling.display
             return clone;
         }
         
-        private function expand(newCapacity:int=-1):void
+        private function expand():void
         {
-            var oldCapacity:int = capacity;
-            
-            if (newCapacity <  0) newCapacity = oldCapacity * 2;
-            if (newCapacity == 0) newCapacity = 16;
-            if (newCapacity <= oldCapacity) return;
-            
-            mVertexData.numVertices = newCapacity * 4;
-            
-            for (var i:int=oldCapacity; i<newCapacity; ++i)
-            {
-                mIndexData[int(i*6  )] = i*4;
-                mIndexData[int(i*6+1)] = i*4 + 1;
-                mIndexData[int(i*6+2)] = i*4 + 2;
-                mIndexData[int(i*6+3)] = i*4 + 1;
-                mIndexData[int(i*6+4)] = i*4 + 3;
-                mIndexData[int(i*6+5)] = i*4 + 2;
-            }
-            
-            createBuffers();
-            registerPrograms();
+            var oldCapacity:int = this.capacity;
+            this.capacity = oldCapacity < 8 ? 16 : oldCapacity * 2;
         }
         
         private function createBuffers():void
@@ -188,11 +182,13 @@ package starling.display
         private function syncBuffers():void
         {
             if (mVertexBuffer == null)
+            {
                 createBuffers();
+            }
             else
             {
-                // as last parameter, we could also use 'mNumQuads * 4', but on some GPU hardware (iOS!),
-                // this is slower than updating the complete buffer.
+                // as last parameter, we could also use 'mNumQuads * 4', but on some
+                // GPU hardware (iOS!), this is slower than updating the complete buffer.
                 mVertexBuffer.uploadFromVector(mVertexData.rawData, 0, mVertexData.numVertices);
                 mSyncRequired = false;
             }
@@ -210,9 +206,6 @@ package starling.display
             var pma:Boolean = mVertexData.premultipliedAlpha;
             var context:Context3D = Starling.context;
             var tinted:Boolean = mTinted || (parentAlpha != 1.0);
-            var programName:String = mTexture ? 
-                getImageProgramName(tinted, mTexture.mipMapping, mTexture.repeat, mTexture.format, mSmoothing) : 
-                QUAD_PROGRAM_NAME;
             
             sRenderAlpha[0] = sRenderAlpha[1] = sRenderAlpha[2] = pma ? parentAlpha : 1.0;
             sRenderAlpha[3] = parentAlpha;
@@ -220,7 +213,7 @@ package starling.display
             MatrixUtil.convertTo3D(mvpMatrix, sRenderMatrix);
             RenderSupport.setBlendFactors(pma, blendMode ? blendMode : this.blendMode);
             
-            context.setProgram(Starling.current.getProgram(programName));
+            context.setProgram(getProgram(tinted));
             context.setProgramConstantsFromVector(Context3DProgramType.VERTEX, 0, sRenderAlpha, 1);
             context.setProgramConstantsFromMatrix(Context3DProgramType.VERTEX, 1, sRenderMatrix, true);
             context.setVertexBufferAt(0, mVertexBuffer, VertexData.POSITION_OFFSET, 
@@ -313,7 +306,7 @@ package starling.display
             var vertexID:int = mNumQuads * 4;
             var numQuads:int = quadBatch.numQuads;
             
-            if (mNumQuads + numQuads > capacity) expand(mNumQuads + numQuads);
+            if (mNumQuads + numQuads > capacity) capacity = mNumQuads + numQuads;
             if (mNumQuads == 0) 
             {
                 this.blendMode = blendMode ? blendMode : quadBatch.blendMode;
@@ -353,11 +346,78 @@ package starling.display
             else return true;
         }
         
+        // utility methods for manual vertex-modification
+        
         /** Transforms the vertices of a certain quad by the given matrix. */
-        public function transformQuadAt(index:int, matrix:Matrix):void
+        public function transformQuad(quadID:int, matrix:Matrix):void
         {
-            mVertexData.transformVertex(index * 4, matrix, 4);
+            mVertexData.transformVertex(quadID * 4, matrix, 4);
             mSyncRequired = true;
+        }
+        
+        /** Returns the color of one vertex of a specific quad. */
+        public function getVertexColor(quadID:int, vertexID:int):uint
+        {
+            return mVertexData.getColor(quadID * 4 + vertexID);
+        }
+        
+        /** Updates the color of one vertex of a specific quad. */
+        public function setVertexColor(quadID:int, vertexID:int, color:uint):void
+        {
+            mVertexData.setColor(quadID * 4 + vertexID, color);
+            mSyncRequired = true;
+        }
+        
+        /** Returns the alpha value of one vertex of a specific quad. */
+        public function getVertexAlpha(quadID:int, vertexID:int):Number
+        {
+            return mVertexData.getAlpha(quadID * 4 + vertexID);
+        }
+        
+        /** Updates the alpha value of one vertex of a specific quad. */
+        public function setVertexAlpha(quadID:int, vertexID:int, alpha:Number):void
+        {
+            mVertexData.setAlpha(quadID * 4 + vertexID, alpha);
+            mSyncRequired = true;
+        }
+        
+        /** Returns the color of the first vertex of a specific quad. */
+        public function getQuadColor(quadID:int):uint
+        {
+            return mVertexData.getColor(quadID * 4);
+        }
+        
+        /** Updates the color of a specific quad. */
+        public function setQuadColor(quadID:int, color:uint):void
+        {
+            for (var i:int=0; i<4; ++i)
+                mVertexData.setColor(quadID * 4 + i, color);
+            
+            mSyncRequired = true;
+        }
+        
+        /** Returns the alpha value of the first vertex of a specific quad. */
+        public function getQuadAlpha(quadID:int):Number
+        {
+            return mVertexData.getAlpha(quadID * 4);
+        }
+        
+        /** Updates the alpha value of a specific quad. */
+        public function setQuadAlpha(quadID:int, alpha:Number):void
+        {
+            for (var i:int=0; i<4; ++i)
+                mVertexData.setAlpha(quadID * 4 + i, alpha);
+            
+            mSyncRequired = true;
+        }
+        
+        /** Calculates the bounds of a specific quad, optionally transformed by a matrix.
+         *  If you pass a 'resultRect', the result will be stored in this rectangle
+         *  instead of creating a new object. */
+        public function getQuadBounds(quadID:int, transformationMatrix:Matrix=null,
+                                      resultRect:Rectangle=null):Rectangle
+        {
+            return mVertexData.getBounds(transformationMatrix, quadID * 4, 4, resultRect);
         }
         
         // display object methods
@@ -546,94 +606,98 @@ package starling.display
         public function get batchable():Boolean { return mBatchable; }
         public function set batchable(value:Boolean):void { mBatchable = value; } 
         
-        private function get capacity():int { return mVertexData.numVertices / 4; }
+        /** Indicates the number of quads for which space is allocated (vertex- and index-buffers).
+         *  If you add more quads than what fits into the current capacity, the QuadBatch is
+         *  expanded automatically. However, if you know beforehand how many vertices you need,
+         *  you can manually set the right capacity with this method. */
+        public function get capacity():int { return mVertexData.numVertices / 4; }
+        public function set capacity(value:int):void
+        {
+            var oldCapacity:int = capacity;
+            
+            if (value == oldCapacity) return;
+            else if (value == 0) throw new Error("Capacity must be > 0");
+            else if (value > MAX_NUM_QUADS) value = MAX_NUM_QUADS;
+            if (mNumQuads > value) mNumQuads = value;
+            
+            mVertexData.numVertices = value * 4;
+            mIndexData.length = value * 6;
+            
+            for (var i:int=oldCapacity; i<value; ++i)
+            {
+                mIndexData[int(i*6  )] = i*4;
+                mIndexData[int(i*6+1)] = i*4 + 1;
+                mIndexData[int(i*6+2)] = i*4 + 2;
+                mIndexData[int(i*6+3)] = i*4 + 1;
+                mIndexData[int(i*6+4)] = i*4 + 3;
+                mIndexData[int(i*6+5)] = i*4 + 2;
+            }
+            
+            createBuffers();
+        }
         
         // program management
         
-        private static function registerPrograms():void
+        private function getProgram(tinted:Boolean):Program3D
         {
             var target:Starling = Starling.current;
-            if (target.hasProgram(QUAD_PROGRAM_NAME)) return; // already registered
+            var programName:String = QUAD_PROGRAM_NAME;
             
-            var assembler:AGALMiniAssembler = new AGALMiniAssembler();
-            var vertexProgramCode:String;
-            var fragmentProgramCode:String;
+            if (mTexture)
+                programName = getImageProgramName(tinted, mTexture.mipMapping, 
+                    mTexture.repeat, mTexture.format, mSmoothing);
             
-            // this is the input data we'll pass to the shaders:
-            // 
-            // va0 -> position
-            // va1 -> color
-            // va2 -> texCoords
-            // vc0 -> alpha
-            // vc1 -> mvpMatrix
-            // fs0 -> texture
+            var program:Program3D = target.getProgram(programName);
             
-            // Quad:
-            
-            vertexProgramCode =
-                "m44 op, va0, vc1 \n" + // 4x4 matrix transform to output clipspace
-                "mul v0, va1, vc0 \n";  // multiply alpha (vc0) with color (va1)
-            
-            fragmentProgramCode =
-                "mov oc, v0       \n";  // output color
-            
-            target.registerProgram(QUAD_PROGRAM_NAME,
-                assembler.assemble(Context3DProgramType.VERTEX, vertexProgramCode),
-                assembler.assemble(Context3DProgramType.FRAGMENT, fragmentProgramCode));
-            
-            // Image:
-            // Each combination of tinted/repeat/mipmap/smoothing has its own fragment shader.
-            
-            for each (var tinted:Boolean in [true, false])
+            if (!program)
             {
-                vertexProgramCode = tinted ?
-                    "m44 op, va0, vc1 \n" + // 4x4 matrix transform to output clipspace
-                    "mul v0, va1, vc0 \n" + // multiply alpha (vc0) with color (va1)
-                    "mov v1, va2      \n"   // pass texture coordinates to fragment program
-                  :
-                    "m44 op, va0, vc1 \n" + // 4x4 matrix transform to output clipspace
-                    "mov v1, va2      \n";  // pass texture coordinates to fragment program
-                    
-                fragmentProgramCode = tinted ?
-                    "tex ft1,  v1, fs0 <???> \n" + // sample texture 0
-                    "mul  oc, ft1,  v0       \n"   // multiply color with texel color
-                  :
-                    "tex  oc,  v1, fs0 <???> \n";  // sample texture 0
+                // this is the input data we'll pass to the shaders:
+                // 
+                // va0 -> position
+                // va1 -> color
+                // va2 -> texCoords
+                // vc0 -> alpha
+                // vc1 -> mvpMatrix
+                // fs0 -> texture
                 
-                var smoothingTypes:Array = [
-                    TextureSmoothing.NONE,
-                    TextureSmoothing.BILINEAR,
-                    TextureSmoothing.TRILINEAR
-                ];
-                
-                var formats:Array = [
-                    Context3DTextureFormat.BGRA,
-                    Context3DTextureFormat.COMPRESSED,
-                    "compressedAlpha" // use explicit string for compatibility
-                ];
-                
-                for each (var repeat:Boolean in [true, false])
+                var vertexShader:String;
+                var fragmentShader:String;
+
+                if (!mTexture) // Quad-Shaders
                 {
-                    for each (var mipmap:Boolean in [true, false])
-                    {
-                        for each (var smoothing:String in smoothingTypes)
-                        {
-                            for each (var format:String in formats)
-                            {
-                                var flags:String = RenderSupport.getTextureLookupFlags(
-                                    format, mipmap, repeat, smoothing);
-                                
-                                target.registerProgram(
-                                    getImageProgramName(tinted, mipmap, repeat, format, smoothing),
-                                    assembler.assemble(Context3DProgramType.VERTEX, vertexProgramCode),
-                                    assembler.assemble(Context3DProgramType.FRAGMENT,
-                                        fragmentProgramCode.replace("<???>", flags))
-                                );
-                            }
-                        }
-                    }
+                    vertexShader =
+                        "m44 op, va0, vc1 \n" + // 4x4 matrix transform to output clipspace
+                        "mul v0, va1, vc0 \n";  // multiply alpha (vc0) with color (va1)
+                    
+                    fragmentShader =
+                        "mov oc, v0       \n";  // output color
                 }
+                else // Image-Shaders
+                {
+                    vertexShader = tinted ?
+                        "m44 op, va0, vc1 \n" + // 4x4 matrix transform to output clipspace
+                        "mul v0, va1, vc0 \n" + // multiply alpha (vc0) with color (va1)
+                        "mov v1, va2      \n"   // pass texture coordinates to fragment program
+                        :
+                        "m44 op, va0, vc1 \n" + // 4x4 matrix transform to output clipspace
+                        "mov v1, va2      \n";  // pass texture coordinates to fragment program
+                    
+                    fragmentShader = tinted ?
+                        "tex ft1,  v1, fs0 <???> \n" + // sample texture 0
+                        "mul  oc, ft1,  v0       \n"   // multiply color with texel color
+                        :
+                        "tex  oc,  v1, fs0 <???> \n";  // sample texture 0
+                    
+                    fragmentShader = fragmentShader.replace("<???>",
+                        RenderSupport.getTextureLookupFlags(
+                            mTexture.format, mTexture.mipMapping, mTexture.repeat, smoothing));
+                }
+                
+                program = target.registerProgramFromSource(programName,
+                    vertexShader, fragmentShader);
             }
+            
+            return program;
         }
         
         private static function getImageProgramName(tinted:Boolean, mipMap:Boolean=true, 

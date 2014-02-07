@@ -80,6 +80,10 @@ package starling.text
         // the name container with the registered bitmap fonts
         private static const BITMAP_FONT_DATA_NAME:String = "starling.display.TextField.BitmapFonts";
         
+        // the texture format that is used for TTF rendering
+        private static var sDefaultTextureFormat:String =
+            "BGRA_PACKED" in Context3DTextureFormat ? "bgraPacked4444" : "bgra";
+            
         private var mFontSize:Number;
         private var mColor:uint;
         private var mText:String;
@@ -179,8 +183,7 @@ package starling.text
             
             var scale:Number  = Starling.contentScaleFactor;
             var bitmapData:BitmapData = renderText(scale, mTextBounds);
-            var format:String = "BGRA_PACKED" in Context3DTextureFormat ? 
-                                "bgraPacked4444" : "bgra";
+            var format:String = sDefaultTextureFormat;
             
             mHitArea.width  = bitmapData.width  / scale;
             mHitArea.height = bitmapData.height / scale;
@@ -188,6 +191,9 @@ package starling.text
             var texture:Texture = Texture.fromBitmapData(bitmapData, false, false, scale, format);
             texture.root.onRestore = function():void
             {
+                if (mTextBounds == null)
+                    mTextBounds = new Rectangle();
+                
                 texture.root.uploadBitmapData(renderText(scale, mTextBounds));
             };
             
@@ -207,10 +213,14 @@ package starling.text
             }
         }
 
-        /** formatText is called immediately before the text is rendered. The intent of formatText
-         *  is to be overridden in a subclass, so that you can provide custom formatting for TextField.
-         *  <code>textField</code> is the flash.text.TextField object that you can specially format;
-         *  <code>textFormat</code> is the default TextFormat for <code>textField</code>.
+        /** This method is called immediately before the text is rendered. The intent of
+         *  'formatText' is to be overridden in a subclass, so that you can provide custom
+         *  formatting for the TextField. In the overriden method, call 'setFormat' (either
+         *  over a range of characters or the complete TextField) to modify the format to
+         *  your needs.
+         *  
+         *  @param textField:  the flash.text.TextField object that you can format.
+         *  @param textFormat: the default text format that's currently set on the text field.
          */
         protected function formatText(textField:flash.text.TextField, textFormat:TextFormat):void {}
 
@@ -263,6 +273,10 @@ package starling.text
                 sNativeTextField.width = width = Math.ceil(textWidth + 5);
             if (isVerticalAutoSize)
                 sNativeTextField.height = height = Math.ceil(textHeight + 4);
+            
+            // avoid invalid texture size
+            if (width  < 1) width  = 1.0;
+            if (height < 1) height = 1.0;
             
             var xOffset:Number = 0.0;
             if (hAlign == HAlign.LEFT)        xOffset = 2; // flash adds a 2 pixel offset
@@ -318,8 +332,9 @@ package starling.text
         private function createComposedContents():void
         {
             if (mImage) 
-            { 
+            {
                 mImage.removeFromParent(true); 
+                mImage.texture.dispose();
                 mImage = null; 
             }
             
@@ -634,6 +649,16 @@ package starling.text
             
             mNativeFilters = value.concat();
             mRequiresRedraw = true;
+        }
+        
+        /** The Context3D texture format that is used for rendering of all TrueType texts.
+         *  The default (<pre>Context3DTextureFormat.BGRA_PACKED</pre>) provides a good
+         *  compromise between quality and memory consumption; use <pre>BGRA</pre> for
+         *  the highest quality. */
+        public static function get defaultTextureFormat():String { return sDefaultTextureFormat; }
+        public static function set defaultTextureFormat(value:String):void
+        {
+            sDefaultTextureFormat = value;
         }
         
         /** Makes a bitmap font available at any TextField in the current stage3D context.

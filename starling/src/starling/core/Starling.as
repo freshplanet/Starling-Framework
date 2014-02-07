@@ -81,6 +81,25 @@ package starling.core
      * 
      *  <p>It will now render the contents of the "Game" class in the frame rate that is set up for
      *  the application (as defined in the Flash stage).</p> 
+     * 
+     *  <strong>Context3D Profiles</strong>
+     * 
+     *  <p>Stage3D supports different rendering profiles, and Starling works with all of them. The
+     *  last parameter of the Starling constructor allows you to choose which profile you want.
+     *  The following profiles are available:</p>
+     * 
+     *  <ul>
+     *    <li>BASELINE_CONSTRAINED: provides the broadest hardware reach. If you develop for the
+     *        browser, this is the profile you should test with.</li>
+     *    <li>BASELINE: recommend for any mobile application, as it allows Starling to use a more
+     *        memory efficient texture type (RectangleTextures). It also supports more complex
+     *        AGAL code.</li>
+     *    <li>BASELINE_EXTENDED: adds support for textures up to 4096x4096 pixels. This is
+     *        especially useful on mobile devices with very high resolutions.</li>
+     *  </ul>
+     *  
+     *  <p>The recommendation is to deploy your app with the profile "auto" (which makes Starling
+     *  pick the best available of those three), but test it in all available profiles.</p>
      *  
      *  <strong>Accessing the Starling object</strong>
      * 
@@ -120,7 +139,9 @@ package starling.core
      *  sleep), Starling's stage3D render context may be lost. Starling can recover from a lost
      *  context if the class property "handleLostContext" is set to "true". Keep in mind, however, 
      *  that this comes at the price of increased memory consumption; Starling will cache textures 
-     *  in RAM to be able to restore them when the context is lost.</p> 
+     *  in RAM to be able to restore them when the context is lost. (Except if you use the
+     *  'AssetManager' for your textures. It is smart enough to recreate a texture directly
+     *  from its origin.)</p> 
      *  
      *  <p>In case you want to react to a context loss, Starling dispatches an event with
      *  the type "Event.CONTEXT3D_CREATE" when the context is restored. You can recreate any 
@@ -128,7 +149,7 @@ package starling.core
      * 
      *  <strong>Sharing a 3D Context</strong>
      * 
-     *  <p>Per default, Starling handles the Stage3D context independently. If you want to combine
+     *  <p>Per default, Starling handles the Stage3D context itself. If you want to combine
      *  Starling with another Stage3D engine, however, this may not be what you want. In this case,
      *  you can make use of the <code>shareContext</code> property:</p> 
      *  
@@ -153,7 +174,7 @@ package starling.core
     public class Starling extends EventDispatcher
     {
         /** The version of the Starling framework. */
-        public static const VERSION:String = "1.4";
+        public static const VERSION:String = "1.4.1";
         
         /** The key for the shader programs stored in 'contextData' */
         private static const PROGRAM_DATA_NAME:String = "Starling.programs"; 
@@ -165,7 +186,6 @@ package starling.core
         private var mRootClass:Class;
         private var mRoot:DisplayObject;
         private var mJuggler:Juggler;
-        private var mStarted:Boolean;        
         private var mSupport:RenderSupport;
         private var mTouchProcessor:TouchProcessor;
         private var mAntiAliasing:int;
@@ -178,6 +198,9 @@ package starling.core
         private var mProfile:String;
         private var mSupportHighResolutions:Boolean;
         private var mContext:Context3D;
+        private var mStarted:Boolean;
+        private var mRendering:Boolean;
+        private var mContextValid:Boolean;
         
         private var mViewPort:Rectangle;
         private var mPreviousViewPort:Rectangle;
@@ -199,16 +222,28 @@ package starling.core
          *                    Starling stage.
          *  @param stage      The Flash (2D) stage.
          *  @param viewPort   A rectangle describing the area into which the content will be 
-         *                    rendered. @default stage size
+         *                    rendered. Default: stage size
          *  @param stage3D    The Stage3D object into which the content will be rendered. If it 
          *                    already contains a context, <code>sharedContext</code> will be set
-         *                    to <code>true</code>. @default the first available Stage3D.
+         *                    to <code>true</code>. Default: the first available Stage3D.
          *  @param renderMode Use this parameter to force "software" rendering. 
-         *  @param profile    The Context3DProfile that should be requested.
+         *  @param profile    The Context3D profile that should be requested.
+         *
+         *                    <ul>
+         *                    <li>If you pass a profile String, this profile is enforced.</li>
+         *                    <li>Pass an Array/Vector of profiles to make Starling pick the best
+         *                        available profile from this list.</li>
+         *                    <li>Pass the String "auto" to make Starling pick the best available
+         *                        profile automatically.</li>
+         *                    </ul>
+         *
+         *                    <p>Beware that automatic profile selection is only available starting
+         *                    with AIR 4. If you use "auto" or an Array/Vector, and the AIR version
+         *                    is smaller than that, the lowest profile will be used.</p>
          */
         public function Starling(rootClass:Class, stage:flash.display.Stage, 
                                  viewPort:Rectangle=null, stage3D:Stage3D=null,
-                                 renderMode:String="auto", profile:String="baselineConstrained") 
+                                 renderMode:String="auto", profile:Object="baselineConstrained")
         {
             if (stage == null) throw new ArgumentError("Stage must not be null");
             if (rootClass == null) throw new ArgumentError("Root class must not be null");
@@ -231,7 +266,6 @@ package starling.core
             mAntiAliasing = 0;
             mSimulateMultitouch = false;
             mEnableErrorChecking = false;
-            mProfile = profile;
             mSupportHighResolutions = false;
             mLastFrameTimestamp = getTimer() / 1000.0;
             mSupport  = new RenderSupport();
@@ -260,6 +294,12 @@ package starling.core
             
             if (mStage3D.context3D && mStage3D.context3D.driverInfo != "Disposed")
             {
+                if (profile == "auto" || profile is Array || profile is Vector.<String>)
+                    throw new ArgumentError("When sharing the context3D, the actual profile has " +
+                        "to be passed as last argument to the Starling constructor");
+                else
+                    mProfile = profile as String;
+                
                 mShareContext = true;
                 setTimeout(initialize, 1); // we don't call it right away, because Starling should
                                            // behave the same way with or without a shared context
@@ -267,20 +307,7 @@ package starling.core
             else
             {
                 mShareContext = false;
-                
-                try
-                {
-                    // "Context3DProfile" is only available starting with Flash Player 11.4/AIR 3.4.
-                    // to stay compatible with older versions, we check if the parameter is available.
-                    
-                    var requestContext3D:Function = mStage3D.requestContext3D;
-                    if (requestContext3D.length == 1) requestContext3D(renderMode);
-                    else requestContext3D(renderMode, profile);
-                }
-                catch (e:Error)
-                {
-                    showFatalError("Context3D error: " + e.message);
-                }
+                requestContext3D(stage3D, renderMode, profile);
             }
         }
         
@@ -288,7 +315,9 @@ package starling.core
          *  event listeners. */
         public function dispose():void
         {
-            stop();
+            stop(true);
+
+            mContextValid = false;
             
             mNativeStage.removeEventListener(Event.ENTER_FRAME, onEnterFrame, false);
             mNativeStage.removeEventListener(KeyboardEvent.KEY_DOWN, onKey, false);
@@ -320,6 +349,68 @@ package starling.core
         
         // functions
         
+        private function requestContext3D(stage3D:Stage3D, renderMode:String, profile:Object):void
+        {
+            const AVAILABLE_PROFILES:Vector.<String> =
+                new <String>["baselineExtended", "baseline", "baselineConstrained"];
+            
+            var supportsProfileArray:Boolean = "requestContext3DMatchingProfiles" in stage3D;
+            var profiles:Vector.<String>;
+            
+            if (profile == "auto")
+                profiles = AVAILABLE_PROFILES;
+            else if (profile is String)
+                profiles = new <String>[profile as String];
+            else if (profile is Vector.<String>)
+                profiles = profile as Vector.<String>;
+            else if (profile is Array)
+            {
+                profiles = new <String>[];
+                
+                for (var i:int=0; i<profile.length; ++i)
+                    profiles[i] = profile[i];
+            }
+            else
+            {
+                throw new ArgumentError("Profile must be of type 'String', 'Array', " +
+                    "or 'Vector.<String>'");
+            }
+            
+            try
+            {
+                if (profiles.length == 1 || !supportsProfileArray)
+                {
+                    // sort profiles descending
+                    profiles.sort(compareProfiles);
+                    
+                    mProfile = profiles[profiles.length-1];
+                    stage3D.requestContext3D(renderMode, mProfile);
+                }
+                else
+                {
+                    if (renderMode != "auto")
+                        trace("[Starling] Warning: Automatic profile selection " +
+                              "forces renderMode to 'auto'.");
+                    
+                    stage3D["requestContext3DMatchingProfiles"](profiles);
+                }
+            }
+            catch (e:Error)
+            {
+                showFatalError("Context3D error: " + e.message);
+            }
+            
+            function compareProfiles(a:String, b:String):int
+            {
+                var indexA:int = AVAILABLE_PROFILES.indexOf(a);
+                var indexB:int = AVAILABLE_PROFILES.indexOf(b);
+                
+                if (indexA < indexB) return -1;
+                else if (indexA > indexB) return 1;
+                else return 0;
+            }
+        }
+        
         private function initialize():void
         {
             makeCurrent();
@@ -336,6 +427,9 @@ package starling.core
             mContext = mStage3D.context3D;
             mContext.enableErrorChecking = mEnableErrorChecking;
             contextData[PROGRAM_DATA_NAME] = new Dictionary();
+            
+            if (mProfile == null)
+                mProfile = mContext["profile"];
             
             updateViewPort(true);
             
@@ -373,6 +467,9 @@ package starling.core
          *  and processes touches. */
         public function advanceTime(passedTime:Number):void
         {
+            if (!mContextValid)
+                return;
+            
             makeCurrent();
             
             mTouchProcessor.advanceTime(passedTime);
@@ -390,7 +487,7 @@ package starling.core
          *  it is presented. This can be avoided by enabling <code>shareContext</code>.*/ 
         public function render():void
         {
-            if (!contextValid)
+            if (!mContextValid)
                 return;
             
             makeCurrent();
@@ -400,9 +497,6 @@ package starling.core
             _renderEnabled = false;
             updateNativeOverlay();
             mSupport.nextFrame();
-            
-            if (!mShareContext)
-                RenderSupport.clear(mStage.color, 1.0);
             
             var scaleX:Number = mViewPort.width  / mStage.stageWidth;
             var scaleY:Number = mViewPort.height / mStage.stageHeight;
@@ -416,6 +510,9 @@ package starling.core
                 mViewPort.y < 0 ? -mViewPort.y / scaleY : 0.0,
                 mClippedViewPort.width  / scaleX, 
                 mClippedViewPort.height / scaleY);
+            
+            if (!mShareContext)
+                RenderSupport.clear(mStage.color, 1.0);
             
             mStage.render(mSupport, 1.0);
             mSupport.finishQuadBatch();
@@ -518,16 +615,23 @@ package starling.core
          *  call that method manually.) */
         public function start():void 
         { 
-            mStarted = true; 
+            mStarted = mRendering = true;
             mLastFrameTimestamp = getTimer() / 1000.0;
         }
         
-        /** Stops all logic processing and freezes the game in its current state. The content
-         *  is still being rendered once per frame, though, because otherwise the conventional
-         *  display list would no longer be updated. */
-        public function stop():void 
+        /** Stops all logic and input processing, effectively freezing the app in its current state.
+         *  Per default, rendering will continue: that's because the classic display list
+         *  is only updated when stage3D is. (If Starling stopped rendering, conventional Flash
+         *  contents would freeze, as well.)
+         *  
+         *  <p>However, if you don't need classic Flash contents, you can stop rendering, too.
+         *  On some mobile systems (e.g. iOS), you are even required to do so if you have
+         *  activated background code execution.</p>
+         */
+        public function stop(suspendRendering:Boolean=false):void
         { 
-            mStarted = false; 
+            mStarted = false;
+            mRendering = !suspendRendering;
         }
         
         // event handlers
@@ -562,13 +666,15 @@ package starling.core
         
         private function onEnterFrame(event:Event):void
         {
+            mContextValid = (mContext && mContext.driverInfo != "Disposed");
+            
             // On mobile, the native display list is only updated on stage3D draw calls. 
             // Thus, we render even when Starling is paused.
             
             if (!mShareContext)
             {
                 if (mStarted) nextFrame();
-                else          render();
+                else if (mRendering) render();
             }
         }
         
@@ -589,6 +695,8 @@ package starling.core
         
         private function onResize(event:Event):void
         {
+            makeCurrent();
+            
             var stage:flash.display.Stage = event.target as flash.display.Stage; 
             mStage.dispatchEvent(new ResizeEvent(Event.RESIZE, stage.stageWidth, stage.stageHeight));
         }
@@ -683,15 +791,28 @@ package starling.core
         
         // program management
         
-        /** Registers a vertex- and fragment-program under a certain name. If the name was already
-         *  used, the previous program is overwritten. */
-        public function registerProgram(name:String, vertexProgram:ByteArray, 
-                                        fragmentProgram:ByteArray):Program3D
+        /** Registers a compiled shader-program under a certain name.
+         *  If the name was already used, the previous program is overwritten. */
+        public function registerProgram(name:String, vertexShader:ByteArray,
+                                        fragmentShader:ByteArray):Program3D
         {
             deleteProgram(name);
             
             var program:Program3D = mContext.createProgram();
-            program.upload(vertexProgram, fragmentProgram);
+            program.upload(vertexShader, fragmentShader);
+            programs[name] = program;
+            
+            return program;
+        }
+        
+        /** Compiles a shader-program and registers it under a certain name.
+         *  If the name was already used, the previous program is overwritten. */
+        public function registerProgramFromSource(name:String, vertexShader:String,
+                                                  fragmentShader:String):Program3D
+        {
+            deleteProgram(name);
+            
+            var program:Program3D = RenderSupport.assembleAgal(vertexShader, fragmentShader);
             programs[name] = program;
             
             return program;
@@ -723,12 +844,6 @@ package starling.core
         private function get programs():Dictionary { return contextData[PROGRAM_DATA_NAME]; }
         
         // properties
-        
-        /** Indicates if a context is available and non-disposed. */
-        private function get contextValid():Boolean
-        {
-            return (mContext && mContext.driverInfo != "Disposed");
-        }
         
         /** Indicates if this Starling instance is started. */
         public function get isStarted():Boolean { return mStarted; }
@@ -782,7 +897,7 @@ package starling.core
             if (mAntiAliasing != value)
             {
                 mAntiAliasing = value;
-                if (contextValid) updateViewPort(true);
+                if (mContextValid) updateViewPort(true);
             }
         }
         
@@ -872,7 +987,7 @@ package starling.core
         public function set shareContext(value : Boolean) : void { mShareContext = value; }
         
         /** The Context3D profile as requested in the constructor. Beware that if you are 
-         *  using a shared context, this might not be accurate. */
+         *  using a shared context, this is simply what you passed to the Starling constructor. */
         public function get profile():String { return mProfile; }
         
         /** Indicates that if the device supports HiDPI screens Starling will attempt to allocate
@@ -885,7 +1000,7 @@ package starling.core
             if (mSupportHighResolutions != value)
             {
                 mSupportHighResolutions = value;
-                if (contextValid) updateViewPort(true);
+                if (mContextValid) updateViewPort(true);
             }
         }
         
