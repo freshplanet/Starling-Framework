@@ -467,32 +467,48 @@ package starling.display
                     {
                         var cos:Number = Math.cos(mRotation);
                         var sin:Number = Math.sin(mRotation);
-                        var a:Number   = mScaleX *  cos;
-                        var b:Number   = mScaleX *  sin;
-                        var c:Number   = mScaleY * -sin;
-                        var d:Number   = mScaleY *  cos;
-                        var tx:Number  = mX - mPivotX * a - mPivotY * c;
-                        var ty:Number  = mY - mPivotX * b - mPivotY * d;
-                        
-                        mTransformationMatrix.setTo(a, b, c, d, tx, ty);
+
+//                        var a:Number   = mScaleX *  cos;
+//                        var b:Number   = mScaleX *  sin;
+//                        var c:Number   = mScaleY * -sin;
+//                        var d:Number   = mScaleY *  cos;
+//                        var tx:Number  = mX - mPivotX * a - mPivotY * c;
+//                        var ty:Number  = mY - mPivotX * b - mPivotY * d;
+//
+//                        mTransformationMatrix.setTo(a, b, c, d, tx, ty);
+
+                        mTransformationMatrix.a = mScaleX * cos;
+                        mTransformationMatrix.b = mScaleX * sin;
+                        mTransformationMatrix.c = -mScaleY * sin;
+                        mTransformationMatrix.d = mScaleY * cos;
+                        mTransformationMatrix.tx = mX - mPivotX * mTransformationMatrix.a - mPivotY * mTransformationMatrix.c;
+                        mTransformationMatrix.ty = mY - mPivotX * mTransformationMatrix.b - mPivotY * mTransformationMatrix.d;
                     }
                 }
                 else
                 {
-                    mTransformationMatrix.identity();
-                    mTransformationMatrix.scale(mScaleX, mScaleY);
-                    MatrixUtil.skew(mTransformationMatrix, mSkewX, mSkewY);
-                    mTransformationMatrix.rotate(mRotation);
-                    mTransformationMatrix.translate(mX, mY);
-                    
-                    if (mPivotX != 0.0 || mPivotY != 0.0)
-                    {
-                        // prepend pivot transformation
-                        mTransformationMatrix.tx = mX - mTransformationMatrix.a * mPivotX
-                                                      - mTransformationMatrix.c * mPivotY;
-                        mTransformationMatrix.ty = mY - mTransformationMatrix.b * mPivotX 
-                                                      - mTransformationMatrix.d * mPivotY;
+                    // Check if rotation and do the maths.
+
+                    if(mRotation == 0.0){
+
+                        mTransformationMatrix.a = mScaleX;
+                        mTransformationMatrix.b = 0.0;
+                        mTransformationMatrix.c = 0.0;
+                        mTransformationMatrix.d = mScaleY;
+
+                    } else {
+                        cos = Math.cos(mRotation);
+                        sin = Math.sin(mRotation);
+                        mTransformationMatrix.a = mScaleX * cos;
+                        mTransformationMatrix.b = mScaleX * sin;
+                        mTransformationMatrix.c = -mScaleY * cos;
+                        mTransformationMatrix.d = mScaleY * sin;
+
                     }
+
+                    mTransformationMatrix.tx = mX-mPivotX;
+                    mTransformationMatrix.ty = mY-mPivotY;
+
                 }
             }
             
