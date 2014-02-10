@@ -148,7 +148,7 @@ package starling.textures
 		
 		public function get textureRegions():Dictionary
 		{
-			return mTextureRegions;
+			return mTextureInfos;
 		}
         
         /** Returns the frame rectangle of a specific region, or <code>null</code> if that region 
