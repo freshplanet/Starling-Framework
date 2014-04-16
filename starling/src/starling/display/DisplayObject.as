@@ -124,6 +124,8 @@ package starling.display
      */
     public class DisplayObject extends EventDispatcher
     {
+        private static const TWO_PI:Number = Math.PI * 2.0;
+        
         // members
         
         private var mX:Number;
@@ -282,7 +284,6 @@ package starling.display
         public function getBounds(targetSpace:DisplayObject, resultRect:Rectangle=null):Rectangle
         {
             throw new AbstractMethodError();
-            return null;
         }
         
         /** Returns the object that is found topmost beneath a point in local coordinates, or nil if 
@@ -377,9 +378,13 @@ package starling.display
         
         private final function normalizeAngle(angle:Number):Number
         {
-            // move into range [-180 deg, +180 deg]
-            while (angle < -Math.PI) angle += Math.PI * 2.0;
-            while (angle >  Math.PI) angle -= Math.PI * 2.0;
+            // move to equivalent value in range [0 deg, 360 deg] without a loop
+            angle = angle % TWO_PI;
+
+            // move to [-180 deg, +180 deg]
+            if (angle < -Math.PI) angle += TWO_PI;
+            if (angle >  Math.PI) angle -= TWO_PI;
+
             return angle;
         }
         
@@ -457,7 +462,7 @@ package starling.display
          *  In that case, Starling will apply the matrix, but not update the corresponding 
          *  properties.</p>
          * 
-         *  @returns CAUTION: not a copy, but the actual object! */
+         *  <p>CAUTION: not a copy, but the actual object!</p> */
         public function get transformationMatrix():Matrix
         {
             if (mOrientationChanged)
@@ -527,6 +532,8 @@ package starling.display
         
         public function set transformationMatrix(matrix:Matrix):void
         {
+            const PI_Q:Number = Math.PI / 4.0;
+
             mOrientationChanged = false;
             mTransformationMatrix.copyFrom(matrix);
             mPivotX = mPivotY = 0;
@@ -536,10 +543,16 @@ package starling.display
             
             mSkewX = Math.atan(-matrix.c / matrix.d);
             mSkewY = Math.atan( matrix.b / matrix.a);
-            
-            mScaleX = matrix.a / Math.cos(mSkewY);
-            mScaleY = matrix.d / Math.cos(mSkewX);
-            
+
+            // NaN check ("isNaN" causes allocation)
+            if (mSkewX != mSkewX) mSkewX = 0.0;
+            if (mSkewY != mSkewY) mSkewY = 0.0;
+
+            mScaleY = (mSkewX > -PI_Q && mSkewX < PI_Q) ?  matrix.d / Math.cos(mSkewX)
+                                                        : -matrix.c / Math.sin(mSkewX);
+            mScaleX = (mSkewY > -PI_Q && mSkewY < PI_Q) ?  matrix.a / Math.cos(mSkewY)
+                                                        :  matrix.b / Math.sin(mSkewY);
+
             if (isEquivalent(mSkewX, mSkewY))
             {
                 mRotation = mSkewX;

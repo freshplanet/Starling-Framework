@@ -46,6 +46,7 @@ package starling.core
     import starling.events.TouchPhase;
     import starling.events.TouchProcessor;
     import starling.utils.HAlign;
+    import starling.utils.SystemUtil;
     import starling.utils.VAlign;
     
     /** Dispatched when a new render context is created. */
@@ -196,11 +197,10 @@ package starling.core
         private var mStatsDisplay:StatsDisplay;
         private var mShareContext:Boolean;
         private var mProfile:String;
-        private var mSupportHighResolutions:Boolean;
         private var mContext:Context3D;
         private var mStarted:Boolean;
         private var mRendering:Boolean;
-        private var mContextValid:Boolean;
+        private var mSupportHighResolutions:Boolean;
         
         private var mViewPort:Rectangle;
         private var mPreviousViewPort:Rectangle;
@@ -209,7 +209,7 @@ package starling.core
         private var mNativeStage:flash.display.Stage;
         private var mNativeOverlay:flash.display.Sprite;
         private var mNativeStageContentScaleFactor:Number;
-        
+
         private static var sCurrent:Starling;
         private static var sHandleLostContext:Boolean;
         private static var sContextData:Dictionary = new Dictionary(true);
@@ -250,6 +250,7 @@ package starling.core
             if (viewPort == null) viewPort = new Rectangle(0, 0, stage.stageWidth, stage.stageHeight);
             if (stage3D == null) stage3D = stage.stage3Ds[0];
             
+            SystemUtil.initialize();
             makeCurrent();
             
             mRootClass = rootClass;
@@ -317,8 +318,6 @@ package starling.core
         {
             stop(true);
 
-            mContextValid = false;
-            
             mNativeStage.removeEventListener(Event.ENTER_FRAME, onEnterFrame, false);
             mNativeStage.removeEventListener(KeyboardEvent.KEY_DOWN, onKey, false);
             mNativeStage.removeEventListener(KeyboardEvent.KEY_UP, onKey, false);
@@ -467,7 +466,7 @@ package starling.core
          *  and processes touches. */
         public function advanceTime(passedTime:Number):void
         {
-            if (!mContextValid)
+            if (!contextValid)
                 return;
             
             makeCurrent();
@@ -487,7 +486,7 @@ package starling.core
          *  it is presented. This can be avoided by enabling <code>shareContext</code>.*/ 
         public function render():void
         {
-            if (!mContextValid)
+            if (!contextValid)
                 return;
             
             makeCurrent();
@@ -666,8 +665,6 @@ package starling.core
         
         private function onEnterFrame(event:Event):void
         {
-            mContextValid = (mContext && mContext.driverInfo != "Disposed");
-            
             // On mobile, the native display list is only updated on stage3D draw calls. 
             // Thus, we render even when Starling is paused.
             
@@ -897,7 +894,7 @@ package starling.core
             if (mAntiAliasing != value)
             {
                 mAntiAliasing = value;
-                if (mContextValid) updateViewPort(true);
+                if (contextValid) updateViewPort(true);
             }
         }
         
@@ -1000,7 +997,7 @@ package starling.core
             if (mSupportHighResolutions != value)
             {
                 mSupportHighResolutions = value;
-                if (mContextValid) updateViewPort(true);
+                if (contextValid) updateViewPort(true);
             }
         }
         
@@ -1015,6 +1012,14 @@ package starling.core
                 mTouchProcessor.dispose();
                 mTouchProcessor = value;
             }
+        }
+        
+        /** Indicates if the Context3D object is currently valid (i.e. it hasn't been lost or
+         *  disposed). Beware that each call to this method causes a String allocation (due to
+         *  internal code Starling can't avoid), so do not call this method too often. */
+        public function get contextValid():Boolean
+        {
+            return mContext && mContext.driverInfo != "Disposed"
         }
 
         // static properties
