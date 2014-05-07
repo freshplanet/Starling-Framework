@@ -477,6 +477,7 @@ package starling.core
         }
         
         private static var _renderEnabled:Boolean = true;
+		public static var autoDisableRender:Boolean = false;
 		public static function get renderEnabled():Boolean {return _renderEnabled;}
         public static function set renderEnabled(value:Boolean):void
         {
@@ -491,7 +492,7 @@ package starling.core
             
             makeCurrent();
             updateViewPort();
-            if(!_renderEnabled)
+            if(!_renderEnabled && autoDisableRender)
                 return;
             _renderEnabled = false;
             updateNativeOverlay();
