@@ -100,6 +100,7 @@ package starling.text
         private var mAutoScale:Boolean;
         private var mAutoSize:String;
         private var mKerning:Boolean;
+        private var mLeading:Number;
         private var mNativeFilters:Array;
         private var mRequiresRedraw:Boolean;
         private var mIsRenderedText:Boolean;
@@ -245,7 +246,7 @@ package starling.text
             }
             
             var textFormat:TextFormat = new TextFormat(mFontName, 
-                mFontSize * scale, mColor, mBold, mItalic, mUnderline, null, null, hAlign);
+                mFontSize * scale, mColor, mBold, mItalic, mUnderline, null, null, hAlign, null, null, null, mLeading);
             textFormat.kerning = mKerning;
             
             sNativeTextField.defaultTextFormat = textFormat;
@@ -661,7 +662,18 @@ package starling.text
                 mRequiresRedraw = true;
             }
         }
-        
+		
+         /** Set leading. @default null */
+        public function get leading():Number { return mLeading; }
+        public function set leading(value:Number):void
+        {
+            if (mLeading != value)
+            {
+				mLeading = value;
+                mRequiresRedraw = true;
+            }
+        }
+		
         /** Indicates whether the font size is scaled down so that the complete text fits
          *  into the text field. @default false */
         public function get autoScale():Boolean { return mAutoScale; }
