@@ -95,6 +95,7 @@ package starling.text
         private var mHAlign:String;
         private var mVAlign:String;
         private var mBold:Boolean;
+        private var mWordWrap:Boolean = true;
         private var mItalic:Boolean;
         private var mUnderline:Boolean;
         private var mAutoScale:Boolean;
@@ -122,7 +123,7 @@ package starling.text
                                   fontSize:Number=12, color:uint=0x0, bold:Boolean=false)
         {
             mText = text ? text : "";
-            mFontSize = fontSize;
+            mFontSize = int( fontSize );
             mColor = color;
             mHAlign = HAlign.CENTER;
             mVAlign = VAlign.CENTER;
@@ -255,7 +256,7 @@ package starling.text
             sNativeTextField.antiAliasType = AntiAliasType.ADVANCED;
             sNativeTextField.selectable = false;            
             sNativeTextField.multiline = true;            
-            sNativeTextField.wordWrap = true;            
+            sNativeTextField.wordWrap = mWordWrap;            
             sNativeTextField.text = mText;
             sNativeTextField.embedFonts = true;
             sNativeTextField.filters = mNativeFilters;
@@ -626,6 +627,17 @@ package starling.text
             if (mBold != value)
             {
                 mBold = value;
+                mRequiresRedraw = true;
+            }
+        }
+		
+		 /** Indicates whether the text is wordWrap. @default false */
+        public function get wordWrap():Boolean { return mWordWrap; }
+        public function set wordWrap(value:Boolean):void 
+        {
+            if (mWordWrap != value)
+            {
+				mWordWrap = value;
                 mRequiresRedraw = true;
             }
         }
